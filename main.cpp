@@ -5,6 +5,9 @@
 #include "InputImage.hpp"
 #include "BilateralGrid.hpp"
 
+#define ICCG_LOOP_MAX	(200)
+#define ICCG_EPS		(0.01)
+
 using namespace cv;
 using namespace std;
 
@@ -30,17 +33,22 @@ int main(int argc, char **argv)
 
 	//入力画像作成用のクラス
 	InputImage InImg(mat_in);
-	InImg.draw_Image();
 	mat_bg_in = InImg.get_Image(IMG_YUV);
-	mat_bg_draw_in = InImg.get_Image(IMG_DRAWYUV);
 
-	BilateralGrid BiGr(mat_bg_in, mat_bg_draw_in);
+	//初期セットアップ
+	BilateralGrid BiGr(mat_bg_in);
 	BiGr.construct_SliceMatrix();
 	BiGr.construct_BlurMatrix();
 	BiGr.calc_Bistochastic();
-	BiGr.construct_AMatrix();
-	BiGr.execute_ICCG(200, 0.01);
+	BiGr.construct_AMatrix_step1();
+	cout << "Bistochastic Fin" << endl;
 
+	InImg.draw_Image();
+	mat_bg_draw_in = InImg.get_Image(IMG_DRAWYUV);
+	cout << "process" << endl;
+	BiGr.set_DrawImage(mat_bg_draw_in);
+	BiGr.construct_AMatrix_step2();
+	BiGr.execute_ICCG(ICCG_LOOP_MAX, ICCG_EPS);
 	BiGr.show_Image(BG_COLORIZED);
 
 	imwrite("draw.png" , InImg.get_Image(IMG_DRAW)*255);

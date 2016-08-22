@@ -34,6 +34,7 @@ class InputImage
 		void draw_Trajectory(Mat3f *);				//マウス入力で軌跡を描く
 		Mat3f mat_input;
 		Mat3f mat_draw;
+		Mat3f mat_draw_bp;
 		Mat3f mat_draw_yuv;
 		Mat3f mat_yuv;
 		Mat1f mat_gray;

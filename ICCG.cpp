@@ -3,6 +3,8 @@
 #include <math.h>
 #include "ICCG.hpp"
 
+#define SKIP (51)	//SIGMA*SIMGA*2+1
+
 using namespace std;
 
 /*--------------------------------------------------------
@@ -432,9 +434,23 @@ note	  : 第0近似解を求める。
 void ApproximateSolution0(str_CSR * csr_mat, vector<double> vec_b, vector<double> vec_x, vector<double> &vec_r)
 {
 	int i, j;
+	int j_index;
 	double ax;
 
     // 第0近似解に対する残差の計算
+	for( i = 0 ; i < csr_mat->row_size ; i++ )
+	{
+		ax = 0.0;
+		for(j = csr_mat->row_index[i]-1; j < csr_mat->row_index[i+1]-1; j++)
+		{
+			j_index = csr_mat->col_index[j];
+			ax += vec_x[j_index] * csr_mat->val[j];
+		}
+		vec_r[i] = vec_b[i]-ax;
+	}
+
+
+	/*
 	for(i = 0; i < csr_mat->row_size; ++i){
 		ax = 0.0;
 		for(j = 0; j < csr_mat->col_size; ++j){
@@ -442,6 +458,7 @@ void ApproximateSolution0(str_CSR * csr_mat, vector<double> vec_b, vector<double
 		}
 		vec_r[i] = vec_b[i]-ax;
 	}
+	*/
 }
 
 
@@ -477,7 +494,7 @@ double dot_CSR(str_CSR * csr_mat, vector<double> &vec2, int row)
 
 
 /*--------------------------------------------------------
-func name : dot_CSR
+func name : transposition_Lmatrix
 note	  : 行列Lを転置する。共役勾配法を高速化するために行う。
 			本プログラムで一番重い処理。loopを工夫する必要あり。
 --------------------------------------------------------*/
@@ -499,6 +516,8 @@ void transposition_Lmatrix(str_CSR * csr_mat, str_CSR * csr_mat2, int loop_cut)
 	double * 	src_val2;	/*配列の要素ポインタ*/
 	int * 		src_col2;	/*(アロー演算子の記述が面倒なので)*/
 	int * 		src_row2;	/* 同様 */
+	int			skip_cnt;
+	int			skip_cnt2;
 
 	csr_mat2->val = new double [csr_mat->str_size]();
 	csr_mat2->col_index = new int [csr_mat->str_size]();
@@ -525,17 +544,28 @@ void transposition_Lmatrix(str_CSR * csr_mat, str_CSR * csr_mat2, int loop_cut)
 			j_s = csr_mat->row_size - 1;
 			j2 = 0;
 		}
+		skip_cnt = 0;
+		skip_cnt2 = 1000000;
 		for( j = j_s; j >= i; --j)
 		{
 			for( k = src_row[j]-1; src_col[k] < i; k++) { }
 			if(src_col[k] == i)
 			{
+				skip_cnt2 = skip_cnt;
 				src_col2[count] = j2;
 				src_val2[count] = src_val[k];
 				count++;
 			}
+			skip_cnt++; 
+			if(skip_cnt - skip_cnt2 > SKIP)	
+			{
+				j2 = j2 + j - (i+SKIP);
+				j = i+SKIP;
+				skip_cnt2 = 1000000;
+			}
 			j2++;
 		}
+
 		src_row2[i2] = count + 1;
 	}
 }
@@ -572,7 +602,7 @@ int ICCGSolver(str_CSR * csr_mat, vector<double> vec_b, vector<double> &vec_x, i
 	double e = 0.0;
 	int k;
 	for(k = 0; k < iter; ++k){
-		cout << "ICCG_loop:" << k << endl;
+		//cout << "ICCG_loop:" << k << endl;
 		for(int i = 0; i < size; ++i){
 			vec_y[i] = dot_CSR(csr_mat, vec_p, i);
 		}

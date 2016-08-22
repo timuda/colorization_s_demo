@@ -11,32 +11,40 @@ using namespace std;
 brief	: Bilateral Gridクラスコンストラクタ
 note	:
 *****************************************************/
-BilateralGrid::BilateralGrid(Mat3f mat_image, Mat3f mat_draw_image)
+BilateralGrid::BilateralGrid(Mat3f mat_image)
 {
 	mat_input = get_Ych(mat_image);
-	mat_color = mat_draw_image.clone();
 	mat_output = mat_input.clone();
+}
+
+/****************************************************
+brief	: 色を塗った画像をセットする 
+note	:
+*****************************************************/
+void BilateralGrid::set_DrawImage(Mat3f mat_draw_image)
+{
+	mat_color = mat_draw_image.clone();
 	mat_colorized = mat_draw_image.clone();
 }
 
 
 /****************************************************
-brief	: 行列Aを作成する
+brief	: 行列Aを作成する。共通事項
 note	:
 *****************************************************/
-void BilateralGrid::construct_AMatrix()
+void BilateralGrid::construct_AMatrix_step1()
 {
 	int i, j;
-	float *uv_pix;
 	float *check_vecter;
-	st_splat * p_splat;
 	st_blur * p_blur;
+	st_A * p_amat;
 	st_A * p_amat_U;
 	st_A * p_amat_V;
 	
 	b_vecter_U = new float [bg_size]();
 	b_vecter_V = new float [bg_size]();
 	A_matrix = new st_A [bg_size];
+	A_matrix_U = new st_A [bg_size];
 	A_matrix_V = new st_A [bg_size];
 
 	p_blur = blur_matrix;
@@ -73,25 +81,51 @@ void BilateralGrid::construct_AMatrix()
 	}
 	
 	/*ここまではU成分とY成分の計算行列は同じ*/
-	p_amat_U = A_matrix;
+	p_amat = A_matrix;
+	p_amat_U = A_matrix_U;
 	p_amat_V = A_matrix_V;
 	for(i=0; i<bg_size; i++)
 	{
-		p_amat_V->count = p_amat_U->count;
+		p_amat_V->count = p_amat->count;
+		p_amat_U->count = p_amat->count;
 		for(j=0; j<p_amat_U->count; j++)
 		{
-			p_amat_V->index[j] = p_amat_U->index[j];
-			p_amat_V->value[j] = p_amat_U->value[j];
+			p_amat_U->index[j] = p_amat->index[j];
+			p_amat_U->value[j] = p_amat->value[j];
+			p_amat_V->index[j] = p_amat->index[j];
+			p_amat_V->value[j] = p_amat->value[j];
 		}
+		p_amat++;
 		p_amat_U++;
 		p_amat_V++;
 	}
+}
 
-	/*bベクトルの作成*/
+void BilateralGrid::construct_AMatrix_step2()
+{
+	int i, j;
+	float *uv_pix;
+	st_splat * p_splat;
+	st_A * p_amat;
+	st_A * p_amat_U;
+	st_A * p_amat_V;
+
+	p_amat = A_matrix;
+	p_amat_U = A_matrix_U;
+	p_amat_V = A_matrix_V;
+	/*初期化*/
 	for(i=0; i<bg_size; i++)
 	{
-		b_vecter_V[i] = 0;
 		b_vecter_U[i] = 0;
+		b_vecter_V[i] = 0;
+		for(j=0; j<p_amat_U->count; j++)
+		{
+			p_amat_U->value[j] = p_amat->value[j];
+			p_amat_V->value[j] = p_amat->value[j];
+		}
+		p_amat++;
+		p_amat_U++;
+		p_amat_V++;
 	}
 
 	uv_pix = mat_color.ptr<float>(0, 0) + 1;
@@ -101,7 +135,7 @@ void BilateralGrid::construct_AMatrix()
 		if(abs(*uv_pix - 0.5) > 0.001)
 		{
 			/*U成分の信頼度を加算*/
-			A_matrix[p_splat->bg_index].value[0] += 1.0;
+			A_matrix_U[p_splat->bg_index].value[0] += 1.0;
 		}
 		b_vecter_U[p_splat->bg_index] += (*uv_pix - 0.5);
 		uv_pix++;
@@ -117,7 +151,7 @@ void BilateralGrid::construct_AMatrix()
 	}
 
 	/*multiply lambda*/	
-	p_amat_U = A_matrix;
+	p_amat_U = A_matrix_U;
 	p_amat_V = A_matrix_V;
 	element_num = 0;
 	for(i=0; i<bg_size; i++)
@@ -131,7 +165,6 @@ void BilateralGrid::construct_AMatrix()
 		p_amat_U++;
 		p_amat_V++;
 	}
-
 }
 
 
@@ -511,9 +544,6 @@ void BilateralGrid::calc_Bistochastic()
 		}
 	}
 
-	cout << "loop:" << k << endl;
-	cout << "sum:" << sum << endl;
-
 	//収束した結果を格納する
 	diagN_matrix = new float [bg_size]();
 	diagM_matrix = new float [bg_size]();
@@ -583,6 +613,8 @@ note	:
 *****************************************************/
 void BilateralGrid::execute_ICCG(int iter, float eps)
 {
+	float *uv_pix;
+	st_splat * p_splat;
 	vector<double> vec_u_in(bg_size);
 	vector<double> vec_v_in(bg_size);
 	vector<double> vec_u_out(bg_size);
@@ -596,13 +628,10 @@ void BilateralGrid::execute_ICCG(int iter, float eps)
 	}
 
 	loop_cut = 14 * (img_cols/SIGMA);	/*ぼかし行列のサイズ 14 = 7*2 */
-	mat_A_csr = convertCSR(A_matrix);
+	mat_A_csr = convertCSR(A_matrix_U);
 	ICCGSolver( &mat_A_csr , vec_u_in, vec_u_out, iter, eps, loop_cut);
 	mat_A_csr = convertCSR(A_matrix_V);
 	ICCGSolver( &mat_A_csr , vec_v_in, vec_v_out, iter, eps, loop_cut);
-
-	float *uv_pix;
-	st_splat * p_splat;
 
 	uv_pix = mat_colorized.ptr<float>(0, 0)+1;
 	p_splat = splat_matrix;

@@ -5,11 +5,11 @@
 
 #define SIGMA (5)
 #define BLUR_RADIUS (1)
-#define WEIGHT_CENTER (4)
+#define WEIGHT_CENTER (6)
 #define WEIGHT_NEIGHBOR (1)
 #define BISTOCHASTIC_LOOP_MAX (50)
 #define BISTOCHASTIC_THRE (0.001)
-#define LAMBDA (0.5)
+#define LAMBDA (1.0)
 
 using namespace cv;
 using namespace std;
@@ -70,10 +70,12 @@ note	:
 class BilateralGrid
 {
 	public:
-		BilateralGrid(Mat3f mat_image, Mat3f mat_draw_image);
+		BilateralGrid(Mat3f mat_image);
+		void set_DrawImage(Mat3f mat_draw_image);
 		void construct_SliceMatrix(void);
 		void construct_BlurMatrix(void);
-		void construct_AMatrix(void);
+		void construct_AMatrix_step1(void);
+		void construct_AMatrix_step2(void);
 
 		void show_Image(int num);
 		void execute_Filter(void);
@@ -110,5 +112,6 @@ class BilateralGrid
 		st_table * table;
 		st_blur * blur_matrix;
 		st_A * A_matrix;
+		st_A * A_matrix_U;
 		st_A * A_matrix_V;
 };
