@@ -3,8 +3,6 @@
 #include <math.h>
 #include "ICCG.hpp"
 
-#define SKIP (51)	//SIGMA*SIMGA*2+1
-
 using namespace std;
 
 /*--------------------------------------------------------
@@ -102,8 +100,6 @@ int rewrite_elementsCSR(str_CSR * csr_mat, double val, int i, int j)
 	}
 	return ret;
 }
-
-
 
 
 /*--------------------------------------------------------
@@ -428,6 +424,42 @@ void ICResCsrFormat(str_CSR * csr_matl, str_CSR * csr_matl2, vector<double> vec_
 
 
 /*--------------------------------------------------------
+func name : make_CSRcolIndex
+note	  : CSRフォーマットに対応した内積計算
+--------------------------------------------------------*/
+void make_CSRcolIndex(str_CSR * csr_mat_l, str_CSR_colsort * csr_col)
+{
+	int i, j;
+	int cnt;
+
+	double * 	src_val;	/*配列の要素ポインタ*/
+	int * 		src_col;	/*(アロー演算子の記述が面倒なので)*/
+	int * 		src_row;	/* 同様 */
+	/*ポインタのセット*/
+	src_val = csr_mat_l->val;
+	src_col = csr_mat_l->col_index;
+	src_row = csr_mat_l->row_index;
+
+	for( i = 0 ; i < csr_mat_l->row_size; i++ )
+	{
+		csr_col[i].size = 0;
+	}
+
+	for( i = 0 ; i < csr_mat_l->row_size ; i++ )
+	{
+		for(j = src_row[i]-1; j < src_row[i+1]-1; j++)
+		{
+			cnt = csr_col[src_col[j]].size;
+			csr_col[src_col[j]].num[cnt] = j;
+			csr_col[src_col[j]].row_index[cnt] = csr_mat_l->row_size - i - 1;
+			csr_col[src_col[j]].size++;
+		}
+	}
+
+}
+
+
+/*--------------------------------------------------------
 func name : ApproximateSolution0
 note	  : 第0近似解を求める。
 --------------------------------------------------------*/
@@ -448,17 +480,6 @@ void ApproximateSolution0(str_CSR * csr_mat, vector<double> vec_b, vector<double
 		}
 		vec_r[i] = vec_b[i]-ax;
 	}
-
-
-	/*
-	for(i = 0; i < csr_mat->row_size; ++i){
-		ax = 0.0;
-		for(j = 0; j < csr_mat->col_size; ++j){
-			ax += vec_x[j] * read_elementsCSR_skip(csr_mat, i, j);
-		}
-		vec_r[i] = vec_b[i]-ax;
-	}
-	*/
 }
 
 
@@ -498,11 +519,10 @@ func name : transposition_Lmatrix
 note	  : 行列Lを転置する。共役勾配法を高速化するために行う。
 			本プログラムで一番重い処理。loopを工夫する必要あり。
 --------------------------------------------------------*/
-void transposition_Lmatrix(str_CSR * csr_mat, str_CSR * csr_mat2, int loop_cut)
+void transposition_Lmatrix(str_CSR * csr_mat, str_CSR_colsort * csr_col, str_CSR * csr_mat2)
 {
 	int i, j, k;
-	int i2, j2;
-	int j_s;
+	int i2;
 	int row_index;
 	int col_index;
 	int count = 0;
@@ -534,47 +554,41 @@ void transposition_Lmatrix(str_CSR * csr_mat, str_CSR * csr_mat2, int loop_cut)
 	for( i = csr_mat->row_size-1; i >= 0; --i){
 		i2 = csr_mat->row_size - i;
 
-		if(csr_mat->row_size - 1 - i > loop_cut)
+		for( j = csr_col[i].size - 1; j > -1; --j)
 		{
-			j_s = i + loop_cut;
-			j2 = csr_mat->row_size - 1 - i - loop_cut;
+			src_val2[count] = csr_mat->val[csr_col[i].num[j]];
+			src_col2[count] = csr_col[i].row_index[j];
+			count++;
 		}
-		else
-		{
-			j_s = csr_mat->row_size - 1;
-			j2 = 0;
-		}
-		skip_cnt = 0;
-		skip_cnt2 = 1000000;
-		for( j = j_s; j >= i; --j)
-		{
-			for( k = src_row[j]-1; src_col[k] < i; k++) { }
-			if(src_col[k] == i)
-			{
-				skip_cnt2 = skip_cnt;
-				src_col2[count] = j2;
-				src_val2[count] = src_val[k];
-				count++;
-			}
-			skip_cnt++; 
-			if(skip_cnt - skip_cnt2 > SKIP)	
-			{
-				j2 = j2 + j - (i+SKIP);
-				j = i+SKIP;
-				skip_cnt2 = 1000000;
-			}
-			j2++;
-		}
-
 		src_row2[i2] = count + 1;
 	}
 }
+
+
+/*--------------------------------------------------------
+func name : pre_ICD
+note	  : 不完全コレスキー分解による前処理付き共役勾配法
+--------------------------------------------------------*/
+str_CSR_colsort * pre_ICD(str_CSR * csr_mat)
+{
+	int size = csr_mat->row_size;
+	vector<double> vec_d(size);
+	str_CSR  csr_l_mat;
+	str_CSR_colsort * csr_col;
+
+	executeIcdCsrFormat(csr_mat , &csr_l_mat , vec_d);
+	csr_col = new str_CSR_colsort[csr_l_mat.str_size];
+	make_CSRcolIndex(&csr_l_mat, csr_col);
+
+	return csr_col;
+}
+
 
 /*--------------------------------------------------------
 func name : ICCGSolver
 note	  : 不完全コレスキー分解による前処理付き共役勾配法
 --------------------------------------------------------*/
-int ICCGSolver(str_CSR * csr_mat, vector<double> vec_b, vector<double> &vec_x, int iter, double eps, int loop_cut)
+int ICCGSolver(str_CSR * csr_mat, vector<double> vec_b, vector<double> &vec_x, int iter, double eps, str_CSR_colsort * csr_col)
 {
 	int size = csr_mat->row_size;
    	vector<double> vec_p(size);
@@ -588,9 +602,9 @@ int ICCGSolver(str_CSR * csr_mat, vector<double> vec_b, vector<double> &vec_x, i
 	str_CSR  csr_l_mat2;
 
 	executeIcdCsrFormat(csr_mat , &csr_l_mat , vec_d);
+	make_CSRcolIndex(&csr_l_mat, csr_col);
+	transposition_Lmatrix(&csr_l_mat, csr_col, &csr_l_mat2);
 	cout << "ICD_FIN" << endl;
-	transposition_Lmatrix(&csr_l_mat, &csr_l_mat2, loop_cut);
-	cout << "TRANSPOSITION_Lmatrix_FIN" << endl;
 
 	ApproximateSolution0(csr_mat, vec_b, vec_x, vec_r);
 	ICResCsrFormat(&csr_l_mat, &csr_l_mat2, vec_d, vec_r, vec_p);
@@ -601,6 +615,7 @@ int ICCGSolver(str_CSR * csr_mat, vector<double> vec_b, vector<double> &vec_x, i
 
 	double e = 0.0;
 	int k;
+	cout << "LOOP_START" << endl;
 	for(k = 0; k < iter; ++k){
 		//cout << "ICCG_loop:" << k << endl;
 		for(int i = 0; i < size; ++i){

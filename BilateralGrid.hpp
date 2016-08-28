@@ -101,6 +101,7 @@ class BilateralGrid
 		int bg_step;
 		int element_num;
 		str_CSR mat_A_csr;
+		str_CSR_colsort * csr_col;
 
 		float * diagN_matrix;
 		float * diagM_matrix;

@@ -628,10 +628,13 @@ void BilateralGrid::execute_ICCG(int iter, float eps)
 	}
 
 	loop_cut = 14 * (img_cols/SIGMA);	/*ぼかし行列のサイズ 14 = 7*2 */
+
 	mat_A_csr = convertCSR(A_matrix_U);
-	ICCGSolver( &mat_A_csr , vec_u_in, vec_u_out, iter, eps, loop_cut);
+	csr_col = pre_ICD(&mat_A_csr);
+
+	ICCGSolver( &mat_A_csr , vec_u_in, vec_u_out, iter, eps, csr_col);
 	mat_A_csr = convertCSR(A_matrix_V);
-	ICCGSolver( &mat_A_csr , vec_v_in, vec_v_out, iter, eps, loop_cut);
+	ICCGSolver( &mat_A_csr , vec_v_in, vec_v_out, iter, eps, csr_col);
 
 	uv_pix = mat_colorized.ptr<float>(0, 0)+1;
 	p_splat = splat_matrix;
