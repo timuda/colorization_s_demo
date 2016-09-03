@@ -24,6 +24,7 @@ CMakeListes.txt		cmakeファイル
 
 
 ○コンパイル方法
+opencv2.Xが必要です。
 GCC + cmakeを用いた方法でコンパイルしました。
 参考：
 http://docs.opencv.org/2.4/doc/tutorials/introduction/linux_gcc_cmake/linux_gcc_cmake.html
